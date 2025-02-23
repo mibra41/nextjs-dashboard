@@ -60,13 +60,12 @@ export async function createInvoice(prevState: State, formData: FormData) {
         VALUES (${customerId}, ${amountInCents}, ${status}, ${date})
       `;
   } catch (error) {
-    return {
-      message: "Database Error: Failed to Create Invoice.",
-    };
+    return { errors: {}, message: "Database Error: Failed to Create Invoice." };
   }
 
   revalidatePath("/dashboard/invoices");
   redirect("/dashboard/invoices");
+  return { ...prevState };
 }
 
 const UpdateInvoice = FormSchema.omit({ id: true, date: true });
@@ -74,7 +73,7 @@ const UpdateInvoice = FormSchema.omit({ id: true, date: true });
 export async function updateInvoice(
   id: string,
   prevState: State,
-  formData: FormData,
+  formData: FormData
 ) {
   const validatedFields = UpdateInvoice.safeParse({
     customerId: formData.get("customerId"),
@@ -99,11 +98,12 @@ export async function updateInvoice(
           WHERE id = ${id}
         `;
   } catch (error) {
-    return { message: "Database Error: Failed to Update Invoice." };
+    return { errors: {}, message: "Database Error: Failed to Update Invoice." };
   }
 
   revalidatePath("/dashboard/invoices");
   redirect("/dashboard/invoices");
+  return { ...prevState };
 }
 
 export async function deleteInvoice(id: string) {
@@ -112,8 +112,8 @@ export async function deleteInvoice(id: string) {
 }
 
 export async function authenticate(
-  prevState: string | undefined,
-  formData: FormData,
+  prevState: State | undefined,
+  formData: FormData
 ) {
   try {
     await signIn("credentials", formData);
@@ -121,13 +121,14 @@ export async function authenticate(
     if (error instanceof AuthError) {
       switch (error.type) {
         case "CredentialsSignin":
-          return "Invalid credentials.";
+          return { message: "Invalid credentials." };
         default:
-          return "Something went wrong";
+          return { message: "Something went wrong." };
       }
     }
     throw error;
   }
+  return { ...prevState };
 }
 
 const SignupSchema = z.object({
@@ -137,8 +138,8 @@ const SignupSchema = z.object({
 });
 
 export async function createUser(
-  prevState: string | undefined,
-  formData: FormData,
+  prevState: State | undefined,
+  formData: FormData
 ) {
   const validatedFields = SignupSchema.safeParse({
     name: formData.get("name"),
@@ -147,7 +148,10 @@ export async function createUser(
   });
 
   if (!validatedFields.success) {
-    return validatedFields.error.errors[0].message;
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Missing Fields. Failed to Update Invoice.",
+    };
   }
 
   const { name, email, password } = validatedFields.data;
@@ -159,7 +163,7 @@ export async function createUser(
     `;
 
     if (existingUser.rows.length > 0) {
-      return "User with this email already exists";
+      return {message: "User with this email already exists"};
     }
 
     // Hash the password
@@ -171,8 +175,11 @@ export async function createUser(
       VALUES (${name}, ${email}, ${hashedPassword})
     `;
   } catch (error) {
-    return "Database Error: Failed to create user.";
+    return {
+      message: "Database Error: Failed to Create User.",
+    };
   }
 
   redirect("/login");
+  return { ...prevState };
 }
