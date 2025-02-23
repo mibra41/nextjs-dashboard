@@ -83,6 +83,14 @@ export default function LoginForm() {
             </>
           )}
         </div>
+        <div className="flex items-center justify-center mt-4">
+          <p className="text-sm text-gray-600">
+            Don't have an account?{' '}
+            <a href="/signup" className="text-blue-500 hover:text-blue-600 font-medium">
+              Sign up
+            </a>
+          </p>
+        </div>
       </div>
     </form>
   );

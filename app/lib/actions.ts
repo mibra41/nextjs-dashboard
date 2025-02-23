@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import bcrypt from "bcrypt";
 import { sql } from "@vercel/postgres";
 import { redirect } from "next/navigation";
 import { signIn } from "@/auth";
@@ -26,6 +27,9 @@ export type State = {
     customerId?: string[];
     amount?: string[];
     status?: string[];
+    name?: string[];
+    email?: string[];
+    password?: string[];
   };
   message?: string | null;
 };
@@ -124,4 +128,49 @@ export async function authenticate(
     }
     throw error;
   }
+}
+
+const SignupSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
+
+
+export async function createUser(prevState: string | undefined, formData: FormData) {
+  const validatedFields = SignupSchema.safeParse({
+    name: formData.get("name"),
+    email: formData.get("email"),
+    password: formData.get("password"),
+  });
+
+  if (!validatedFields.success) {
+    return validatedFields.error.errors[0].message;
+  }
+
+  const { name, email, password } = validatedFields.data;
+
+  try {
+    // Check if user already exists
+    const existingUser = await sql`
+      SELECT email FROM users WHERE email = ${email}
+    `;
+
+    if (existingUser.rows.length > 0) {
+      return "User with this email already exists";
+    }
+    
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Insert new user
+    await sql`
+      INSERT INTO users (name, email, password)
+      VALUES (${name}, ${email}, ${hashedPassword})
+    `;
+  } catch (error) {
+    return "Database Error: Failed to create user.";
+  }
+
+  redirect("/login");
 }
