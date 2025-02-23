@@ -16,7 +16,7 @@ import { useState } from "react";
 export default function SignUpForm() {
   const [errorMessage, formAction, isPending] = useActionState(
     createUser,
-    undefined
+    undefined,
   );
   const [passwordError, setPasswordError] = useState("");
 
@@ -143,8 +143,11 @@ export default function SignUpForm() {
         </div>
         <div className="flex items-center justify-center mt-4">
           <p className="text-sm text-gray-600">
-            Already have an account?{' '}
-            <a href="/login" className="text-blue-500 hover:text-blue-600 font-medium">
+            Already have an account?{" "}
+            <a
+              href="/login"
+              className="text-blue-500 hover:text-blue-600 font-medium"
+            >
               Log in
             </a>
           </p>

@@ -1,9 +1,9 @@
-import SignUpForm from '@/app/ui/signup-form';
-import { Metadata } from 'next';
-import FinaleLogo from '@/app/ui/finale-logo';
- 
+import SignUpForm from "@/app/ui/signup-form";
+import { Metadata } from "next";
+import FinaleLogo from "@/app/ui/finale-logo";
+
 export const metadata: Metadata = {
-  title: 'Sign Up',
+  title: "Sign Up",
 };
 
 export default function SignUpPage() {

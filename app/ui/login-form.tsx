@@ -17,7 +17,7 @@ export default function LoginForm() {
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
   const [errorMessage, formAction, isPending] = useActionState(
     authenticate,
-    undefined
+    undefined,
   );
 
   return (
@@ -85,9 +85,12 @@ export default function LoginForm() {
         </div>
         <div className="flex items-center justify-center mt-4">
           <p className="text-sm text-gray-600">
-            Don't have an account?{' '}
-            <a href="/signup" className="text-blue-500 hover:text-blue-600 font-medium">
-              Sign up
+            Don't have an account?
+            <a
+              href="/signup"
+              className="text-blue-500 hover:text-blue-600 font-medium"
+            >
+              {" Sign up"}
             </a>
           </p>
         </div>

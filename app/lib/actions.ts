@@ -74,7 +74,7 @@ const UpdateInvoice = FormSchema.omit({ id: true, date: true });
 export async function updateInvoice(
   id: string,
   prevState: State,
-  formData: FormData
+  formData: FormData,
 ) {
   const validatedFields = UpdateInvoice.safeParse({
     customerId: formData.get("customerId"),
@@ -113,7 +113,7 @@ export async function deleteInvoice(id: string) {
 
 export async function authenticate(
   prevState: string | undefined,
-  formData: FormData
+  formData: FormData,
 ) {
   try {
     await signIn("credentials", formData);
@@ -136,8 +136,10 @@ const SignupSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
-
-export async function createUser(prevState: string | undefined, formData: FormData) {
+export async function createUser(
+  prevState: string | undefined,
+  formData: FormData,
+) {
   const validatedFields = SignupSchema.safeParse({
     name: formData.get("name"),
     email: formData.get("email"),
@@ -159,7 +161,7 @@ export async function createUser(prevState: string | undefined, formData: FormDa
     if (existingUser.rows.length > 0) {
       return "User with this email already exists";
     }
-    
+
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
