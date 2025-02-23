@@ -9,7 +9,8 @@ import { sql } from "@vercel/postgres";
 async function getUser(email: string): Promise<User | undefined> {
   try {
     const users = await sql<User[]>`SELECT * FROM users WHERE email = ${email}`;
-    return users.rows[0][0];
+    const user = users.rows[0] as unknown as User;
+    return user;
   } catch (error) {
     console.error("Failed to fetch user:", error);
     throw new Error("Failed to fetch user.");
