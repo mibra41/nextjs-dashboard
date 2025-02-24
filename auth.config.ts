@@ -1,9 +1,16 @@
 import type { NextAuthConfig } from "next-auth";
+import { PrismaAdapter } from "@next-auth/prisma-adapter";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
 
 export const authConfig = {
   pages: {
     signIn: "/login",
   },
+  adapter: PrismaAdapter(prisma),
+  secret: process.env.AUTH_SECRET,
+  session: {strategy: "jwt"},
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
