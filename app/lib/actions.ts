@@ -7,6 +7,9 @@ import { redirect } from "next/navigation";
 import { signIn } from "@/auth";
 import { AuthError } from "next-auth";
 import { revalidatePath } from "next/cache";
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 const FormSchema = z.object({
   id: z.string(),
@@ -150,36 +153,41 @@ export async function createUser(
   if (!validatedFields.success) {
     return {
       errors: validatedFields.error.flatten().fieldErrors,
-      message: "Missing Fields. Failed to Update Invoice.",
+      message: "Missing Fields. Failed to Create User.",
     };
   }
 
   const { name, email, password } = validatedFields.data;
 
   try {
-    // Check if user already exists
-    const existingUser = await sql`
-      SELECT email FROM users WHERE email = ${email}
-    `;
+    if (email) {
+      const existingUser = await prisma.user.findUnique({
+        where: {
+          email: email,
+        },
+      });
 
-    if (existingUser.rows.length > 0) {
-      return {message: "User with this email already exists"};
+      if (existingUser) {
+        return {message: "User with this email already exists"};
+      }
     }
 
-    // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Insert new user
-    await sql`
-      INSERT INTO users (name, email, password)
-      VALUES (${name}, ${email}, ${hashedPassword})
-    `;
+    const newUser = await prisma.user.create({
+      data: {
+        name: name,
+        email: email,
+        password: hashedPassword,
+      },
+    });
   } catch (error) {
     return {
       message: "Database Error: Failed to Create User.",
-    };
+    }
+  } finally {
+    await prisma.$disconnect();
   }
-
   redirect("/login");
   return { ...prevState };
 }

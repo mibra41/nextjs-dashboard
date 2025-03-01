@@ -8,7 +8,7 @@ import { sql } from "@vercel/postgres";
 
 async function getUser(email: string): Promise<User | undefined> {
   try {
-    const users = await sql<User[]>`SELECT * FROM users WHERE email = ${email}`;
+    const users = await sql<User[]>`SELECT * FROM "user" WHERE email = ${email}`;
     const user = users.rows[0] as unknown as User;
     return user;
   } catch (error) {
@@ -20,7 +20,7 @@ async function getUser(email: string): Promise<User | undefined> {
 export const { auth, signIn, signOut } = NextAuth({
   ...authConfig,
   session: {
-    strategy: "database",
+    strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
     updateAge: 24 * 60 * 60, // 24 hours
   },
@@ -40,7 +40,7 @@ export const { auth, signIn, signOut } = NextAuth({
 
           if (passwordsMatch) return user;
         }
-
+        
         console.log("Invalid credentials");
         return null;
       },

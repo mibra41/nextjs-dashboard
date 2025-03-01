@@ -15,7 +15,7 @@ async function main() {
     ]);
 
     // Seed all data in a transaction
-    await prisma.$transaction(async (tx: PrismaClient) => {
+    await prisma.$transaction(async (tx) => {
       // Seed users
       const hashedPassword = await bcrypt.hash('123456', 10);
       await Promise.all(
