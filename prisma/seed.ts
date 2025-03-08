@@ -1,3 +1,4 @@
+'use server';
 import { PrismaClient } from '@prisma/client';
 import { users, customers, invoices, revenue } from '../app/lib/placeholder-data';
 import bcrypt from 'bcrypt';

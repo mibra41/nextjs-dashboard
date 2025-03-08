@@ -41,6 +41,7 @@ model user {
   emailVerified DateTime?
   image         String?
   password      String
+  access_token  String?   @unique
   accounts      account[]
   sessions      session[]
 }

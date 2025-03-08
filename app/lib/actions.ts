@@ -7,9 +7,116 @@ import { redirect } from "next/navigation";
 import { signIn } from "@/auth";
 import { AuthError } from "next-auth";
 import { revalidatePath } from "next/cache";
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from "@prisma/client";
+import {
+  Configuration,
+  PlaidApi,
+  PlaidEnvironments,
+  CountryCode,
+  Products,
+} from "plaid";
 
 const prisma = new PrismaClient();
+const config = new Configuration({
+  basePath: PlaidEnvironments.sandbox,
+  baseOptions: {
+    headers: {
+      "PLAID-CLIENT-ID": process.env.PLAID_CLIENT_ID,
+      "PLAID-SECRET": process.env.PLAID_SECRET,
+    },
+  },
+});
+
+const plaid = new PlaidApi(config);
+
+async function getAccountBalances(accessToken: string) {
+  try {
+    const response = await plaid.accountsBalanceGet({
+      access_token: accessToken,
+    });
+    console.log(response);
+    return response.data.accounts; // Array of accounts with balances
+  } catch (error) {
+    console.error("Error fetching account balances:", error);
+    throw error;
+  }
+}
+
+interface AccessTokenResult {
+  access_token: string | null;
+  errors?: { [key: string]: string };
+  message?: string;
+}
+
+export async function checkUserAccessToken(userId: string):  Promise<AccessTokenResult>{
+  try {
+    const result = await sql`
+            SELECT access_token FROM "user" 
+            WHERE id = ${userId}
+          `;
+    if (result.rows.length > 0) {
+      return { access_token: result.rows[0].access_token };
+    } else {
+      return { access_token: null }; // User not found, or no access token.
+    }
+  } catch (error) {
+    return {
+      access_token: null,
+      errors: {},
+      message: "Database Error: Failed to Fetch Access Token.",
+    };
+  }
+}
+
+export async function handleLinkSuccess(userId: string, publicToken: string) {
+  try {
+    // Exchange public_token for access_token
+    const exchangeResponse = await plaid.itemPublicTokenExchange({
+      public_token: publicToken,
+    });
+    const accessToken = exchangeResponse.data.access_token;
+
+    // Store accessToken in your database
+    try {
+      await sql`
+            UPDATE "user"
+            SET access_token = ${accessToken}
+            WHERE id = ${userId}
+          `;
+    } catch (error) {
+      return { errors: {}, message: "Database Error: Failed to Update User." };
+    }
+
+    // Get account balances
+    const accountsWithBalances = await getAccountBalances(accessToken);
+
+    // Send data back to client, or store in database
+
+    console.log("accounts with balances:", accountsWithBalances);
+    return accountsWithBalances;
+  } catch (error) {
+    console.error("Plaid API error:", error);
+    throw error;
+  }
+}
+
+export async function createLinkToken(userId: string) {
+  const request = {
+    user: { client_user_id: userId },
+    client_name: "Finale",
+    products: ["auth", "transactions"] as Products[],
+    country_codes: [CountryCode.Us],
+    language: "en",
+  };
+
+  try {
+    const response = await plaid.linkTokenCreate(request);
+    return { linkToken: response.data.link_token };
+  } catch (error) {
+    console.error("Error creating link token:", error);
+    throw error;
+  }
+}
 
 const FormSchema = z.object({
   id: z.string(),
@@ -168,7 +275,7 @@ export async function createUser(
       });
 
       if (existingUser) {
-        return {message: "User with this email already exists"};
+        return { message: "User with this email already exists" };
       }
     }
 
@@ -184,7 +291,7 @@ export async function createUser(
   } catch (error) {
     return {
       message: "Database Error: Failed to Create User.",
-    }
+    };
   } finally {
     await prisma.$disconnect();
   }
