@@ -53,25 +53,3 @@ model verificationtoken {
 
   @@unique([identifier, token])
 }
-
-model customer {
-  id        String    @id @default(uuid())
-  name      String
-  email     String
-  imageUrl  String    @map("image_url")
-  invoices  invoice[]
-}
-
-model invoice {
-  id         String   @id @default(uuid())
-  customerId String   @map("customer_id")
-  amount     Int
-  status     String
-  date       DateTime
-  customer   customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-}
-
-model revenue {
-  month   String @unique
-  revenue Int
-}

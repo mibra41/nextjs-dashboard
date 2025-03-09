@@ -34,9 +34,11 @@ async function getAccountBalances(accessToken: string) {
     const response = await plaid.accountsBalanceGet({
       access_token: accessToken,
     });
-    console.log(response);
-    return response.data.accounts; // Array of accounts with balances
-  } catch (error) {
+    return response.data.accounts;
+  } catch (error: any) {
+    if (error.response?.data?.error_code === 'ITEM_LOGIN_REQUIRED') {
+      throw new Error('Bank connection needs to be re-authenticated');
+    }
     console.error("Error fetching account balances:", error);
     throw error;
   }
@@ -44,25 +46,26 @@ async function getAccountBalances(accessToken: string) {
 
 interface AccessTokenResult {
   access_token: string | null;
-  errors?: { [key: string]: string };
+  errors?: any[];
   message?: string;
 }
 
-export async function checkUserAccessToken(userId: string):  Promise<AccessTokenResult>{
+export async function checkUserAccessToken(userId: string): Promise<AccessTokenResult> {
   try {
-    const result = await sql`
-            SELECT access_token FROM "user" 
-            WHERE id = ${userId}
-          `;
-    if (result.rows.length > 0) {
-      return { access_token: result.rows[0].access_token };
-    } else {
-      return { access_token: null }; // User not found, or no access token.
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { access_token: true }
+    });
+
+    if (!user?.access_token) {
+      return { access_token: null, errors: [], message: "No access token found" };
     }
+    return { access_token: user.access_token, errors: [], message: "Access token found" };
   } catch (error) {
+    console.error('Error checking access token:', error);
     return {
       access_token: null,
-      errors: {},
+      errors: [error],
       message: "Database Error: Failed to Fetch Access Token.",
     };
   }
@@ -70,7 +73,6 @@ export async function checkUserAccessToken(userId: string):  Promise<AccessToken
 
 export async function handleLinkSuccess(userId: string, publicToken: string) {
   try {
-    // Exchange public_token for access_token
     const exchangeResponse = await plaid.itemPublicTokenExchange({
       public_token: publicToken,
     });
@@ -78,22 +80,27 @@ export async function handleLinkSuccess(userId: string, publicToken: string) {
 
     // Store accessToken in your database
     try {
-      await sql`
-            UPDATE "user"
-            SET access_token = ${accessToken}
-            WHERE id = ${userId}
-          `;
+      await prisma.user.update({
+        where: { id: userId },
+        data: { access_token: accessToken }
+      });
     } catch (error) {
       return { errors: {}, message: "Database Error: Failed to Update User." };
     }
 
-    // Get account balances
-    const accountsWithBalances = await getAccountBalances(accessToken);
-
-    // Send data back to client, or store in database
-
-    console.log("accounts with balances:", accountsWithBalances);
-    return accountsWithBalances;
+    try {
+      const accountsWithBalances = await getAccountBalances(accessToken);
+      return accountsWithBalances;
+    } catch (error: any) {
+      if (error.response?.data?.error_code === 'ITEM_LOGIN_REQUIRED') {
+        await prisma.user.update({
+          where: { id: userId },
+          data: { access_token: null }
+        });
+        throw new Error('Bank connection needs to be re-authenticated');
+      }
+      throw error;
+    }
   } catch (error) {
     console.error("Plaid API error:", error);
     throw error;
@@ -118,20 +125,6 @@ export async function createLinkToken(userId: string) {
   }
 }
 
-const FormSchema = z.object({
-  id: z.string(),
-  customerId: z.string({ invalid_type_error: "Please select a customer." }),
-  amount: z.coerce
-    .number()
-    .gt(0, { message: "Please enter an amount greater than $0." }),
-  status: z.enum(["pending", "paid"], {
-    invalid_type_error: "Please select an invoice status.",
-  }),
-  date: z.string(),
-});
-
-const CreateInvoice = FormSchema.omit({ id: true, date: true });
-
 export type State = {
   errors?: {
     customerId?: string[];
@@ -143,83 +136,6 @@ export type State = {
   };
   message?: string | null;
 };
-
-export async function createInvoice(prevState: State, formData: FormData) {
-  const validatedFields = CreateInvoice.safeParse({
-    customerId: formData.get("customerId"),
-    amount: formData.get("amount"),
-    status: formData.get("status"),
-  });
-
-  // If form validation fails, return errors early. Otherwise, continue.
-  if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: "Missing Fields. Failed to Create Invoice.",
-    };
-  }
-
-  // Prepare data for insertion into the database
-  const { customerId, amount, status } = validatedFields.data;
-  const amountInCents = amount * 100;
-  const date = new Date().toISOString().split("T")[0];
-
-  try {
-    await sql`
-        INSERT INTO invoices (customer_id, amount, status, date)
-        VALUES (${customerId}, ${amountInCents}, ${status}, ${date})
-      `;
-  } catch (error) {
-    return { errors: {}, message: "Database Error: Failed to Create Invoice." };
-  }
-
-  revalidatePath("/dashboard/invoices");
-  redirect("/dashboard/invoices");
-  return { ...prevState };
-}
-
-const UpdateInvoice = FormSchema.omit({ id: true, date: true });
-
-export async function updateInvoice(
-  id: string,
-  prevState: State,
-  formData: FormData
-) {
-  const validatedFields = UpdateInvoice.safeParse({
-    customerId: formData.get("customerId"),
-    amount: formData.get("amount"),
-    status: formData.get("status"),
-  });
-
-  if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: "Missing Fields. Failed to Update Invoice.",
-    };
-  }
-
-  const { customerId, amount, status } = validatedFields.data;
-  const amountInCents = amount * 100;
-
-  try {
-    await sql`
-          UPDATE invoices
-          SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status}
-          WHERE id = ${id}
-        `;
-  } catch (error) {
-    return { errors: {}, message: "Database Error: Failed to Update Invoice." };
-  }
-
-  revalidatePath("/dashboard/invoices");
-  redirect("/dashboard/invoices");
-  return { ...prevState };
-}
-
-export async function deleteInvoice(id: string) {
-  await sql`DELETE FROM invoices WHERE id = ${id}`;
-  revalidatePath("/dashboard/invoices");
-}
 
 export async function authenticate(
   prevState: State | undefined,
