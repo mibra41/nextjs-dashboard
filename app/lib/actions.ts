@@ -2,11 +2,9 @@
 
 import { z } from "zod";
 import bcrypt from "bcrypt";
-import { sql } from "@vercel/postgres";
 import { redirect } from "next/navigation";
 import { signIn } from "@/auth";
 import { AuthError } from "next-auth";
-import { revalidatePath } from "next/cache";
 import { PrismaClient } from "@prisma/client";
 import {
   Configuration,
@@ -15,6 +13,7 @@ import {
   CountryCode,
   Products,
 } from "plaid";
+import { formatCurrency } from "./utils";
 
 const prisma = new PrismaClient();
 const config = new Configuration({
@@ -77,30 +76,54 @@ export async function handleLinkSuccess(userId: string, publicToken: string) {
       public_token: publicToken,
     });
     const accessToken = exchangeResponse.data.access_token;
+    const hashedAccessToken = await bcrypt.hash(accessToken, 10); 
+    // Store access token
+    await prisma.user.update({
+      where: { id: userId },
+      data: { access_token: hashedAccessToken }
+    });
 
-    // Store accessToken in your database
-    try {
-      await prisma.user.update({
-        where: { id: userId },
-        data: { access_token: accessToken }
+    // Fetch and store account information
+    const accountsWithBalances = await getAccountBalances(accessToken);
+    
+    // Create or update accounts and balances
+    for (const account of accountsWithBalances) {
+      await prisma.plaidAccount.upsert({
+        where: {
+          plaidId: account.account_id,
+        },
+        create: {
+          userId: userId,
+          plaidId: account.account_id,
+          name: account.name,
+          mask: account.mask,
+          type: account.type,
+          subtype: account.subtype,
+          currentBalance: JSON.stringify(formatCurrency(account.balances.current || 0)),
+          availableBalance: JSON.stringify(formatCurrency(account.balances.available || 0)),
+          balanceHistory: {
+            create: {
+              balance: JSON.stringify(formatCurrency(account.balances.current || 0)),
+              available: JSON.stringify(formatCurrency(account.balances.available || 0)),
+            }
+          }
+        },
+        update: {
+          name: account.name,
+          currentBalance: JSON.stringify(formatCurrency(account.balances.current || 0)),
+          availableBalance: JSON.stringify(formatCurrency(account.balances.available || 0)),
+          lastUpdated: new Date(),
+          balanceHistory: {
+            create: {
+              balance: JSON.stringify(formatCurrency(account.balances.current || 0)),
+              available: JSON.stringify(formatCurrency(account.balances.available || 0)),
+            }
+          }
+        }
       });
-    } catch (error) {
-      return { errors: {}, message: "Database Error: Failed to Update User." };
     }
 
-    try {
-      const accountsWithBalances = await getAccountBalances(accessToken);
-      return accountsWithBalances;
-    } catch (error: any) {
-      if (error.response?.data?.error_code === 'ITEM_LOGIN_REQUIRED') {
-        await prisma.user.update({
-          where: { id: userId },
-          data: { access_token: null }
-        });
-        throw new Error('Bank connection needs to be re-authenticated');
-      }
-      throw error;
-    }
+    return accountsWithBalances;
   } catch (error) {
     console.error("Plaid API error:", error);
     throw error;
@@ -213,4 +236,23 @@ export async function createUser(
   }
   redirect("/login");
   return { ...prevState };
+}
+
+export async function getUserAccounts(userId: string) {
+  try {
+    const accounts = await prisma.plaidAccount.findMany({
+      where: { userId },
+      include: {
+        balanceHistory: {
+          orderBy: { timestamp: 'desc' },
+          take: 30, // Last 30 balance records
+        }
+      },
+      orderBy: { type: 'asc' }
+    });
+    return { accounts, error: null };
+  } catch (error) {
+    console.error('Error fetching accounts:', error);
+    return { accounts: null, error: 'Failed to fetch accounts' };
+  }
 }

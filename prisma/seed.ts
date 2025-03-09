@@ -1,6 +1,5 @@
 'use server';
 import { PrismaClient } from '@prisma/client';
-import { users, customers, invoices, revenue } from '../app/lib/placeholder-data';
 import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -9,9 +8,11 @@ async function main() {
   try {
     // Clean existing data
     await prisma.$transaction([
-      prisma.invoice.deleteMany(),
-      prisma.customer.deleteMany(),
-      prisma.revenue.deleteMany(),
+      prisma.plaidAccount.deleteMany(),
+      prisma.accountBalance.deleteMany(),
+      prisma.session.deleteMany(),
+      prisma.account.deleteMany(),
+      prisma.verificationToken.deleteMany(),
       prisma.user.deleteMany(),
     ]);
 
@@ -19,55 +20,42 @@ async function main() {
     await prisma.$transaction(async (tx) => {
       // Seed users
       const hashedPassword = await bcrypt.hash('123456', 10);
-      await Promise.all(
-        users.map((user) =>
-          tx.user.create({
-            data: {
-              id: user.id,
-              name: user.name,
-              email: user.email,
-              password: hashedPassword,
-            },
-          })
-        )
-      );
+      const user = await tx.user.create({
+        data: {
+          name: 'Demo User',
+          email: 'demo@example.com',
+          password: hashedPassword,
+          emailVerified: new Date(),
+        },
+      });
 
-      // Seed customers
-      await Promise.all(
-        customers.map((customer) =>
-          tx.customer.create({
-            data: {
-              id: customer.id,
-              name: customer.name,
-              email: customer.email,
-              imageUrl: customer.image_url,
-            },
-          })
-        )
-      );
+      // Create a demo plaid account
+      const plaidAccount = await tx.plaidAccount.create({
+        data: {
+          userId: user.id,
+          plaidId: 'demo_account_id',
+          name: 'Demo Checking Account',
+          mask: '1234',
+          type: 'depository',
+          subtype: 'checking',
+          currentBalance: 1000.00,
+          availableBalance: 950.00,
+        },
+      });
 
-      // Seed invoices
-      await Promise.all(
-        invoices.map((invoice) =>
-          tx.invoice.create({
-            data: {
-              customerId: invoice.customer_id,
-              amount: invoice.amount,
-              status: invoice.status,
-              date: new Date(invoice.date),
-            },
-          })
-        )
-      );
+      // Create some historical balance records
+      const now = new Date();
+      const balanceHistory = Array.from({length: 30}, (_, i) => ({
+        accountId: plaidAccount.id,
+        balance: 1000 + (Math.random() * 200 - 100),
+        available: 950 + (Math.random() * 200 - 100),
+        timestamp: new Date(now.getTime() - (i * 24 * 60 * 60 * 1000))
+      }));
 
-      // Seed revenue
       await Promise.all(
-        revenue.map((rev) =>
-          tx.revenue.create({
-            data: {
-              month: rev.month,
-              revenue: rev.revenue,
-            },
+        balanceHistory.map(balance =>
+          tx.accountBalance.create({
+            data: balance
           })
         )
       );

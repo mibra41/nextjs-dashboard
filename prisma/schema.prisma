@@ -35,21 +35,54 @@ model session {
 }
 
 model user {
-  id            String    @id @default(cuid())
+  id            String         @id @default(cuid())
   name          String?
-  email         String?   @unique
+  email         String?        @unique
   emailVerified DateTime?
   image         String?
   password      String
-  access_token  String?   @unique
+  access_token  String?        @unique
   accounts      account[]
   sessions      session[]
+  plaidAccount  plaidAccount[]
 }
 
-model verificationtoken {
+model verificationToken {
   identifier String
   token      String   @unique
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+model plaidAccount {
+  id      String  @id @default(cuid())
+  userId  String
+  user    user    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plaidId String  @unique // account_id from Plaid
+  name    String
+  mask    String? // last 4 digits of the account
+  type    String // depository, credit, loan, etc.
+  subtype String? // checking, savings, credit card, etc.
+
+  // Current balance information
+  currentBalance   String   @default("0")
+  availableBalance String?
+  lastUpdated      DateTime @default(now())
+
+  // Historical balance records
+  balanceHistory accountBalance[]
+
+  @@unique([userId, plaidId])
+}
+
+model accountBalance {
+  id        String       @id @default(cuid())
+  accountId String
+  account   plaidAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  balance   String       @default("0")
+  available String?      @default("0")
+  timestamp DateTime     @default(now())
+
+  @@index([accountId, timestamp])
 }
